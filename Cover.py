@@ -11,7 +11,6 @@ import warnings
 
 # Suppress warnings - Fixed the NumPy warning issue
 warnings.filterwarnings('ignore')
-# Remove the problematic np.RankWarning line as it doesn't exist in newer NumPy versions
 
 # Page configuration
 st.set_page_config(
@@ -84,6 +83,9 @@ class InventoryManagementSystem:
         
         if 'tolerance' not in st.session_state:
             st.session_state.tolerance = 30
+            
+        if 'show_add_form' not in st.session_state:
+            st.session_state.show_add_form = False
     
     def load_sample_data(self):
         """Load sample data for demonstration"""
@@ -191,8 +193,12 @@ class InventoryManagementSystem:
                 # Calculate revised quantity based on tolerance
                 revised_qty = rm_norms_qty * (1 + st.session_state.tolerance / 100)
                 
-                # Calculate stock coverage
-                coverage_days = current_stock / avg_consumption if avg_consumption > 0 else 999
+                # Calculate stock coverage - handle division by zero
+                if avg_consumption > 0:
+                    coverage_days = current_stock / avg_consumption
+                else:
+                    coverage_days = 999
+                    
                 coverage_category = self.determine_coverage_category(coverage_days)
                 
                 # Calculate variance and status
@@ -211,7 +217,7 @@ class InventoryManagementSystem:
                     'Variance %': round(variance_pct, 2),
                     'Variance Qty': round(variance_qty, 2),
                     'Status': status,
-                    'Coverage Days': round(coverage_days, 2),
+                    'Coverage Days': round(coverage_days, 2) if coverage_days != 999 else 999,
                     'Coverage Category': coverage_category
                 }
                 
@@ -269,6 +275,9 @@ class InventoryManagementSystem:
     
     def apply_filters(self, df, search_term, category_filter, class_filter, status_filter, critical_only):
         """Apply filters to dataframe"""
+        if df.empty:
+            return df
+            
         filtered_df = df.copy()
         
         # Search filter
@@ -301,54 +310,80 @@ class InventoryManagementSystem:
         """Create coverage dashboard with multiple charts"""
         if df.empty:
             st.warning("No data available for dashboard!")
-            return
+            return None, None, None, None
         
-        # Coverage Categories Pie Chart
-        coverage_counts = df['Coverage Category'].value_counts()
-        fig_coverage = px.pie(
-            values=coverage_counts.values,
-            names=coverage_counts.index,
-            title="Coverage Categories Distribution",
-            color_discrete_map=self.coverage_categories
-        )
-        fig_coverage.update_traces(textposition='inside', textinfo='percent+label')
-        
-        # Status Distribution Bar Chart
-        status_counts = df['Status'].value_counts()
-        status_colors = {'Excess Inventory': '#ff4444', 'Within Norms': '#44aa44', 'Short Inventory': '#ffaa00'}
-        fig_status = px.bar(
-            x=status_counts.index,
-            y=status_counts.values,
-            title="Inventory Status Distribution",
-            color=status_counts.index,
-            color_discrete_map=status_colors
-        )
-        fig_status.update_layout(showlegend=False, xaxis_title="Status", yaxis_title="Number of Items")
-        
-        # Classification Breakdown
-        class_counts = df['Classification'].value_counts()
-        fig_class = px.bar(
-            x=class_counts.index,
-            y=class_counts.values,
-            title="Classification Breakdown",
-            color=class_counts.index,
-            color_discrete_sequence=['#ff6b6b', '#4ecdc4', '#45b7d1']
-        )
-        fig_class.update_layout(showlegend=False, xaxis_title="Classification", yaxis_title="Number of Items")
-        
-        # Coverage Days Histogram
-        fig_histogram = px.histogram(
-            df[df['Coverage Days'] < 365],
-            x='Coverage Days',
-            nbins=20,
-            title="Coverage Days Distribution",
-            color_discrete_sequence=['skyblue']
-        )
-        fig_histogram.add_vline(x=7, line_dash="dash", line_color="red", 
-                               annotation_text="Critical Level (7 days)")
-        fig_histogram.update_layout(xaxis_title="Coverage Days", yaxis_title="Frequency")
-        
-        return fig_coverage, fig_status, fig_class, fig_histogram
+        try:
+            # Coverage Categories Pie Chart
+            coverage_counts = df['Coverage Category'].value_counts()
+            if len(coverage_counts) > 0:
+                fig_coverage = px.pie(
+                    values=coverage_counts.values,
+                    names=coverage_counts.index,
+                    title="Coverage Categories Distribution",
+                    color_discrete_map=self.coverage_categories
+                )
+                fig_coverage.update_traces(textposition='inside', textinfo='percent+label')
+            else:
+                fig_coverage = go.Figure()
+                fig_coverage.add_annotation(text="No coverage data available", 
+                                          xref="paper", yref="paper", x=0.5, y=0.5)
+            
+            # Status Distribution Bar Chart
+            status_counts = df['Status'].value_counts()
+            status_colors = {'Excess Inventory': '#ff4444', 'Within Norms': '#44aa44', 'Short Inventory': '#ffaa00'}
+            if len(status_counts) > 0:
+                fig_status = px.bar(
+                    x=status_counts.index,
+                    y=status_counts.values,
+                    title="Inventory Status Distribution",
+                    color=status_counts.index,
+                    color_discrete_map=status_colors
+                )
+                fig_status.update_layout(showlegend=False, xaxis_title="Status", yaxis_title="Number of Items")
+            else:
+                fig_status = go.Figure()
+                fig_status.add_annotation(text="No status data available", 
+                                        xref="paper", yref="paper", x=0.5, y=0.5)
+            
+            # Classification Breakdown
+            class_counts = df['Classification'].value_counts()
+            if len(class_counts) > 0:
+                fig_class = px.bar(
+                    x=class_counts.index,
+                    y=class_counts.values,
+                    title="Classification Breakdown",
+                    color=class_counts.index,
+                    color_discrete_sequence=['#ff6b6b', '#4ecdc4', '#45b7d1']
+                )
+                fig_class.update_layout(showlegend=False, xaxis_title="Classification", yaxis_title="Number of Items")
+            else:
+                fig_class = go.Figure()
+                fig_class.add_annotation(text="No classification data available", 
+                                       xref="paper", yref="paper", x=0.5, y=0.5)
+            
+            # Coverage Days Histogram - filter out extreme values
+            coverage_data = df[df['Coverage Days'] < 365]
+            if len(coverage_data) > 0:
+                fig_histogram = px.histogram(
+                    coverage_data,
+                    x='Coverage Days',
+                    nbins=20,
+                    title="Coverage Days Distribution",
+                    color_discrete_sequence=['skyblue']
+                )
+                fig_histogram.add_vline(x=7, line_dash="dash", line_color="red", 
+                                       annotation_text="Critical Level (7 days)")
+                fig_histogram.update_layout(xaxis_title="Coverage Days", yaxis_title="Frequency")
+            else:
+                fig_histogram = go.Figure()
+                fig_histogram.add_annotation(text="No coverage data available", 
+                                           xref="paper", yref="paper", x=0.5, y=0.5)
+            
+            return fig_coverage, fig_status, fig_class, fig_histogram
+            
+        except Exception as e:
+            st.error(f"Error creating dashboard charts: {e}")
+            return None, None, None, None
     
     def create_stock_analysis_charts(self, df):
         """Create stock analysis charts"""
@@ -356,37 +391,44 @@ class InventoryManagementSystem:
             st.warning("No data available for analysis!")
             return None, None
         
-        # Stock vs Norms Scatter Plot
-        fig_scatter = px.scatter(
-            df,
-            x='RM Norms Qty',
-            y='Current Stock',
-            color='Status',
-            size='Avg Consumption',
-            hover_data=['Part No', 'Description', 'Coverage Days'],
-            title="Current Stock vs RM Norms",
-            color_discrete_map={'Excess Inventory': '#ff4444', 'Within Norms': '#44aa44', 'Short Inventory': '#ffaa00'}
-        )
-        # Add diagonal line for reference
-        max_val = max(df['RM Norms Qty'].max(), df['Current Stock'].max())
-        fig_scatter.add_shape(
-            type="line",
-            x0=0, y0=0, x1=max_val, y1=max_val,
-            line=dict(color="gray", width=2, dash="dash"),
-        )
-        
-        # Variance Analysis
-        fig_variance = px.bar(
-            df.head(20),  # Top 20 items
-            x='Part No',
-            y='Variance %',
-            color='Status',
-            title="Variance Analysis (Top 20 Items)",
-            color_discrete_map={'Excess Inventory': '#ff4444', 'Within Norms': '#44aa44', 'Short Inventory': '#ffaa00'}
-        )
-        fig_variance.update_layout(xaxis_tickangle=-45)
-        
-        return fig_scatter, fig_variance
+        try:
+            # Stock vs Norms Scatter Plot
+            fig_scatter = px.scatter(
+                df,
+                x='RM Norms Qty',
+                y='Current Stock',
+                color='Status',
+                size='Avg Consumption',
+                hover_data=['Part No', 'Description', 'Coverage Days'],
+                title="Current Stock vs RM Norms",
+                color_discrete_map={'Excess Inventory': '#ff4444', 'Within Norms': '#44aa44', 'Short Inventory': '#ffaa00'}
+            )
+            # Add diagonal line for reference
+            if len(df) > 0:
+                max_val = max(df['RM Norms Qty'].max(), df['Current Stock'].max())
+                fig_scatter.add_shape(
+                    type="line",
+                    x0=0, y0=0, x1=max_val, y1=max_val,
+                    line=dict(color="gray", width=2, dash="dash"),
+                )
+            
+            # Variance Analysis - limit to top 20 items to avoid overcrowding
+            top_variance_df = df.nlargest(20, 'Variance %') if len(df) >= 20 else df
+            fig_variance = px.bar(
+                top_variance_df,
+                x='Part No',
+                y='Variance %',
+                color='Status',
+                title="Variance Analysis (Top Items by Variance)",
+                color_discrete_map={'Excess Inventory': '#ff4444', 'Within Norms': '#44aa44', 'Short Inventory': '#ffaa00'}
+            )
+            fig_variance.update_layout(xaxis_tickangle=-45)
+            
+            return fig_scatter, fig_variance
+            
+        except Exception as e:
+            st.error(f"Error creating analysis charts: {e}")
+            return None, None
     
     def create_consumption_trends_chart(self, df):
         """Create consumption trends visualization"""
@@ -394,101 +436,114 @@ class InventoryManagementSystem:
             st.warning("No data available for trends!")
             return None
         
-        # Group by classification and calculate metrics
-        trends_data = df.groupby('Classification').agg({
-            'Avg Consumption': ['mean', 'sum'],
-            'Current Stock': ['mean', 'sum'],
-            'Coverage Days': 'mean'
-        }).round(2)
-        
-        trends_data.columns = ['Avg Daily Consumption', 'Total Daily Consumption', 
-                              'Avg Current Stock', 'Total Current Stock', 'Avg Coverage Days']
-        trends_data = trends_data.reset_index()
-        
-        # Create subplots
-        fig = make_subplots(
-            rows=2, cols=2,
-            subplot_titles=('Average Daily Consumption by Class', 'Total Stock by Class',
-                           'Average Coverage Days by Class', 'Consumption vs Stock Ratio'),
-            specs=[[{"type": "bar"}, {"type": "bar"}],
-                   [{"type": "bar"}, {"type": "scatter"}]]
-        )
-        
-        # Add traces
-        fig.add_trace(
-            go.Bar(x=trends_data['Classification'], y=trends_data['Avg Daily Consumption'],
-                   name='Avg Daily Consumption', marker_color='#ff6b6b'),
-            row=1, col=1
-        )
-        
-        fig.add_trace(
-            go.Bar(x=trends_data['Classification'], y=trends_data['Total Current Stock'],
-                   name='Total Stock', marker_color='#4ecdc4'),
-            row=1, col=2
-        )
-        
-        fig.add_trace(
-            go.Bar(x=trends_data['Classification'], y=trends_data['Avg Coverage Days'],
-                   name='Avg Coverage Days', marker_color='#45b7d1'),
-            row=2, col=1
-        )
-        
-        fig.add_trace(
-            go.Scatter(x=trends_data['Total Daily Consumption'], y=trends_data['Total Current Stock'],
-                      mode='markers+text', text=trends_data['Classification'],
-                      textposition='top center', name='Consumption vs Stock',
-                      marker=dict(size=15, color='#ff9800')),
-            row=2, col=2
-        )
-        
-        fig.update_layout(height=600, showlegend=False, title_text="Consumption Trends Analysis")
-        
-        return fig
+        try:
+            # Group by classification and calculate metrics
+            trends_data = df.groupby('Classification').agg({
+                'Avg Consumption': ['mean', 'sum'],
+                'Current Stock': ['mean', 'sum'],
+                'Coverage Days': 'mean'
+            }).round(2)
+            
+            trends_data.columns = ['Avg Daily Consumption', 'Total Daily Consumption', 
+                                  'Avg Current Stock', 'Total Current Stock', 'Avg Coverage Days']
+            trends_data = trends_data.reset_index()
+            
+            if len(trends_data) == 0:
+                st.warning("No trend data available!")
+                return None
+            
+            # Create subplots
+            fig = make_subplots(
+                rows=2, cols=2,
+                subplot_titles=('Average Daily Consumption by Class', 'Total Stock by Class',
+                               'Average Coverage Days by Class', 'Consumption vs Stock Ratio'),
+                specs=[[{"type": "bar"}, {"type": "bar"}],
+                       [{"type": "bar"}, {"type": "scatter"}]]
+            )
+            
+            # Add traces
+            fig.add_trace(
+                go.Bar(x=trends_data['Classification'], y=trends_data['Avg Daily Consumption'],
+                       name='Avg Daily Consumption', marker_color='#ff6b6b'),
+                row=1, col=1
+            )
+            
+            fig.add_trace(
+                go.Bar(x=trends_data['Classification'], y=trends_data['Total Current Stock'],
+                       name='Total Stock', marker_color='#4ecdc4'),
+                row=1, col=2
+            )
+            
+            fig.add_trace(
+                go.Bar(x=trends_data['Classification'], y=trends_data['Avg Coverage Days'],
+                       name='Avg Coverage Days', marker_color='#45b7d1'),
+                row=2, col=1
+            )
+            
+            fig.add_trace(
+                go.Scatter(x=trends_data['Total Daily Consumption'], y=trends_data['Total Current Stock'],
+                          mode='markers+text', text=trends_data['Classification'],
+                          textposition='top center', name='Consumption vs Stock',
+                          marker=dict(size=15, color='#ff9800')),
+                row=2, col=2
+            )
+            
+            fig.update_layout(height=600, showlegend=False, title_text="Consumption Trends Analysis")
+            
+            return fig
+            
+        except Exception as e:
+            st.error(f"Error creating trends chart: {e}")
+            return None
     
     def export_to_excel(self, df):
         """Export dataframe to Excel"""
-        output = io.BytesIO()
-        
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            # Main inventory sheet
-            df.to_excel(writer, sheet_name='Inventory Summary', index=False)
+        try:
+            output = io.BytesIO()
             
-            # Summary statistics
-            summary_data = {
-                'Metric': [
-                    'Total Items',
-                    'Critical Items (< 3 days)',
-                    'Excess Inventory',
-                    'Short Inventory',
-                    'Within Norms'
-                ],
-                'Value': [
-                    len(df),
-                    len(df[df['Coverage Days'] < 3]),
-                    len(df[df['Status'] == 'Excess Inventory']),
-                    len(df[df['Status'] == 'Short Inventory']),
-                    len(df[df['Status'] == 'Within Norms'])
-                ]
-            }
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                # Main inventory sheet
+                df.to_excel(writer, sheet_name='Inventory Summary', index=False)
+                
+                # Summary statistics
+                summary_data = {
+                    'Metric': [
+                        'Total Items',
+                        'Critical Items (< 3 days)',
+                        'Excess Inventory',
+                        'Short Inventory',
+                        'Within Norms'
+                    ],
+                    'Value': [
+                        len(df),
+                        len(df[df['Coverage Days'] < 3]),
+                        len(df[df['Status'] == 'Excess Inventory']),
+                        len(df[df['Status'] == 'Short Inventory']),
+                        len(df[df['Status'] == 'Within Norms'])
+                    ]
+                }
+                
+                pd.DataFrame(summary_data).to_excel(writer, sheet_name='Summary', index=False)
+                
+                # Critical items
+                critical_df = df[df['Coverage Days'] < 7]
+                if not critical_df.empty:
+                    critical_df.to_excel(writer, sheet_name='Critical Items', index=False)
+                
+                # Excess inventory
+                excess_df = df[df['Status'] == 'Excess Inventory']
+                if not excess_df.empty:
+                    excess_df.to_excel(writer, sheet_name='Excess Inventory', index=False)
+                
+                # Short inventory
+                short_df = df[df['Status'] == 'Short Inventory']
+                if not short_df.empty:
+                    short_df.to_excel(writer, sheet_name='Short Inventory', index=False)
             
-            pd.DataFrame(summary_data).to_excel(writer, sheet_name='Summary', index=False)
-            
-            # Critical items
-            critical_df = df[df['Coverage Days'] < 7]
-            if not critical_df.empty:
-                critical_df.to_excel(writer, sheet_name='Critical Items', index=False)
-            
-            # Excess inventory
-            excess_df = df[df['Status'] == 'Excess Inventory']
-            if not excess_df.empty:
-                excess_df.to_excel(writer, sheet_name='Excess Inventory', index=False)
-            
-            # Short inventory
-            short_df = df[df['Status'] == 'Short Inventory']
-            if not short_df.empty:
-                short_df.to_excel(writer, sheet_name='Short Inventory', index=False)
-        
-        return output.getvalue()
+            return output.getvalue()
+        except Exception as e:
+            st.error(f"Error exporting to Excel: {e}")
+            return None
 
 def main():
     # Initialize the system
@@ -519,19 +574,20 @@ def main():
         if tolerance != st.session_state.tolerance:
             st.session_state.tolerance = tolerance
             # Recalculate data with new tolerance
-            inv_system.process_imported_data([
-                {
-                    'Part No': item['Part No'],
-                    'Part Description': item['Description'],
-                    'Part Classification': item['Classification'],
-                    'Inventory Class': item['Inventory Class'],
-                    'Average Consumption/Day': item['Avg Consumption'],
-                    'RM Norms - In Days': item['RM Norms Days'],
-                    'RM Norms - In Qty': item['RM Norms Qty'],
-                    'Current Stock Qty': item['Current Stock']
-                }
-                for item in st.session_state.inventory_data
-            ])
+            if st.session_state.inventory_data:
+                raw_data = []
+                for item in st.session_state.inventory_data:
+                    raw_data.append({
+                        'Part No': item['Part No'],
+                        'Part Description': item['Description'],
+                        'Part Classification': item['Classification'],
+                        'Inventory Class': item['Inventory Class'],
+                        'Average Consumption/Day': item['Avg Consumption'],
+                        'RM Norms - In Days': item['RM Norms Days'],
+                        'RM Norms - In Qty': item['RM Norms Qty'],
+                        'Current Stock Qty': item['Current Stock']
+                    })
+                inv_system.process_imported_data(raw_data)
             st.rerun()
         
         st.markdown("---")
@@ -612,7 +668,8 @@ def main():
         
         with col2:
             critical_count = len(filtered_df[filtered_df['Coverage Days'] < 3])
-            st.metric("Critical Items", critical_count, delta=f"{critical_count/len(filtered_df)*100:.1f}%" if len(filtered_df) > 0 else "0%")
+            delta_text = f"{critical_count/len(filtered_df)*100:.1f}%" if len(filtered_df) > 0 else "0%"
+            st.metric("Critical Items", critical_count, delta=delta_text)
         
         with col3:
             excess_count = len(filtered_df[filtered_df['Status'] == 'Excess Inventory'])
@@ -646,12 +703,13 @@ def main():
                 # Export button
                 if st.button("📥 Export to Excel"):
                     excel_data = inv_system.export_to_excel(filtered_df)
-                    st.download_button(
-                        label="Download Excel File",
-                        data=excel_data,
-                        file_name=f"inventory_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+                    if excel_data:
+                        st.download_button(
+                            label="Download Excel File",
+                            data=excel_data,
+                            file_name=f"inventory_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
             
             # Display dataframe
             if not filtered_df.empty:
@@ -683,282 +741,276 @@ def main():
             
             if not filtered_df.empty:
                 # Create dashboard charts
-                fig_coverage, fig_status, fig_class, fig_histogram = inv_system.create_coverage_dashboard(filtered_df)
-                
-                # Display charts in grid
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.plotly_chart(fig_coverage, use_container_width=True)
-                    st.plotly_chart(fig_class, use_container_width=True)
-                
-                with col2:
-                    st.plotly_chart(fig_status, use_container_width=True)
-                    st.plotly_chart(fig_histogram, use_container_width=True)
+                charts = inv_system.create_coverage_dashboard(filtered_df)
+                if charts and all(chart is not None for chart in charts):
+                    fig_coverage, fig_status, fig_class, fig_histogram = charts
+                    
+                    # Display charts in grid
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.plotly_chart(fig_coverage, use_container_width=True)
+                        st.plotly_chart(fig_class, use_container_width=True)
+                    
+                    with col2:
+                        st.plotly_chart(fig_status, use_container_width=True)
+                        st.plotly_chart(fig_histogram, use_container_width=True)
+                else:
+                    st.error("Error generating dashboard charts")
             else:
-                st.warning("No data available for dashboard with current filters.")
+                st.warning("No data available for dashboard")
         
         with tab3:
             st.subheader("Stock Analysis")
             
             if not filtered_df.empty:
-                # Create analysis charts
-                fig_scatter, fig_variance = inv_system.create_stock_analysis_charts(filtered_df)
-                
-                if fig_scatter and fig_variance:
+                # Create stock analysis charts
+                analysis_charts = inv_system.create_stock_analysis_charts(filtered_df)
+                if analysis_charts and all(chart is not None for chart in analysis_charts):
+                    fig_scatter, fig_variance = analysis_charts
+                    
                     st.plotly_chart(fig_scatter, use_container_width=True)
                     st.plotly_chart(fig_variance, use_container_width=True)
-                
-                # Consumption trends
-                st.subheader("Consumption Trends")
-                fig_trends = inv_system.create_consumption_trends_chart(filtered_df)
-                if fig_trends:
-                    st.plotly_chart(fig_trends, use_container_width=True)
+                    
+                    # Consumption trends
+                    st.subheader("Consumption Trends")
+                    fig_trends = inv_system.create_consumption_trends_chart(filtered_df)
+                    if fig_trends:
+                        st.plotly_chart(fig_trends, use_container_width=True)
+                else:
+                    st.error("Error generating analysis charts")
             else:
-                st.warning("No data available for analysis with current filters.")
+                st.warning("No data available for analysis")
         
         with tab4:
             st.subheader("Critical Items Analysis")
             
-            # Critical items (< 7 days coverage)
+            # Critical items (less than 7 days coverage)
             critical_df = filtered_df[filtered_df['Coverage Days'] < 7]
             
             if not critical_df.empty:
                 st.error(f"⚠️ {len(critical_df)} items have critical stock levels (< 7 days coverage)")
                 
-                # Sort by coverage days
+                # Sort by coverage days (ascending)
                 critical_df_sorted = critical_df.sort_values('Coverage Days')
                 
-                # Display critical items
-                st.dataframe(
-                    critical_df_sorted[['Part No', 'Description', 'Classification', 
-                                      'Current Stock', 'Avg Consumption', 'Coverage Days', 'Status']],
-                    use_container_width=True,
-                    height=300
-                )
-                
-                # Critical items chart
-                fig_critical = px.bar(
-                    critical_df_sorted.head(10),
-                    x='Part No',
-                    y='Coverage Days',
-                    color='Coverage Days',
-                    title="Top 10 Most Critical Items",
-                    color_continuous_scale='Reds_r'
-                )
-                fig_critical.update_layout(xaxis_tickangle=-45)
-                fig_critical.add_hline(y=3, line_dash="dash", line_color="red", 
-                                     annotation_text="Critical Threshold (3 days)")
-                st.plotly_chart(fig_critical, use_container_width=True)
-                
-                # Action recommendations
-                st.subheader("📋 Recommended Actions")
-                for _, item in critical_df_sorted.head(5).iterrows():
-                    days_left = item['Coverage Days']
-                    if days_left < 1:
-                        urgency = "🚨 URGENT"
-                        color = "red"
-                    elif days_left < 3:
-                        urgency = "⚠️ HIGH PRIORITY"
-                        color = "orange"
+                # Display critical items with color coding
+                for _, row in critical_df_sorted.head(10).iterrows():
+                    coverage_days = row['Coverage Days']
+                    if coverage_days < 3:
+                        alert_type = "error"
+                        icon = "🔴"
+                    elif coverage_days < 7:
+                        alert_type = "warning"
+                        icon = "🟠"
                     else:
-                        urgency = "⚡ MEDIUM PRIORITY"
-                        color = "yellow"
+                        alert_type = "info"
+                        icon = "🟡"
                     
-                    st.markdown(f"""
-                    <div style="background-color: {color}20; border-left: 4px solid {color}; padding: 10px; margin: 5px 0; border-radius: 5px;">
-                        <strong>{urgency}</strong><br>
-                        <strong>Part:</strong> {item['Part No']} - {item['Description']}<br>
-                        <strong>Days Left:</strong> {days_left:.1f} days<br>
-                        <strong>Recommended Action:</strong> Order immediately - {int(item['Avg Consumption'] * item['RM Norms Days'])} units needed
-                    </div>
-                    """, unsafe_allow_html=True)
+                    with st.container():
+                        col1, col2, col3, col4 = st.columns([2, 3, 1, 1])
+                        with col1:
+                            st.write(f"{icon} **{row['Part No']}**")
+                        with col2:
+                            st.write(row['Description'])
+                        with col3:
+                            st.write(f"{coverage_days:.1f} days")
+                        with col4:
+                            st.write(f"{row['Current Stock']:.0f} units")
+                
+                # Show all critical items in a table
+                st.subheader("All Critical Items")
+                st.dataframe(
+                    critical_df_sorted[['Part No', 'Description', 'Current Stock', 'Coverage Days', 'Avg Consumption', 'Status']],
+                    use_container_width=True
+                )
             else:
-                st.success("✅ No critical stock items found!")
+                st.success("✅ No critical items found!")
         
         with tab5:
-            st.subheader("📑 Reports & Analytics")
+            st.subheader("Reports & Analytics")
             
-            # Summary statistics
+            # Summary Report
             col1, col2 = st.columns(2)
             
             with col1:
                 st.subheader("📊 Summary Statistics")
                 
                 if not filtered_df.empty:
-                    total_value = filtered_df['Current Stock'].sum()
-                    avg_coverage = filtered_df['Coverage Days'].mean()
-                    
-                    summary_stats = {
-                        'Total Items': len(filtered_df),
-                        'Total Stock Quantity': f"{total_value:,.0f}",
-                        'Average Coverage Days': f"{avg_coverage:.1f}",
-                        'Critical Items (< 3 days)': len(filtered_df[filtered_df['Coverage Days'] < 3]),
-                        'Warning Items (3-7 days)': len(filtered_df[(filtered_df['Coverage Days'] >= 3) & (filtered_df['Coverage Days'] < 7)]),
-                        'Excess Inventory Items': len(filtered_df[filtered_df['Status'] == 'Excess Inventory']),
-                        'Short Inventory Items': len(filtered_df[filtered_df['Status'] == 'Short Inventory']),
-                        'Items Within Norms': len(filtered_df[filtered_df['Status'] == 'Within Norms'])
+                    stats_data = {
+                        'Metric': [
+                            'Total Items',
+                            'Average Coverage Days',
+                            'Items < 3 Days',
+                            'Items 3-7 Days',
+                            'Items 7-30 Days',
+                            'Items 30+ Days',
+                            'Excess Inventory',
+                            'Short Inventory',
+                            'Within Norms'
+                        ],
+                        'Value': [
+                            len(filtered_df),
+                            f"{filtered_df['Coverage Days'].mean():.1f}",
+                            len(filtered_df[filtered_df['Coverage Days'] < 3]),
+                            len(filtered_df[(filtered_df['Coverage Days'] >= 3) & (filtered_df['Coverage Days'] < 7)]),
+                            len(filtered_df[(filtered_df['Coverage Days'] >= 7) & (filtered_df['Coverage Days'] < 30)]),
+                            len(filtered_df[filtered_df['Coverage Days'] >= 30]),
+                            len(filtered_df[filtered_df['Status'] == 'Excess Inventory']),
+                            len(filtered_df[filtered_df['Status'] == 'Short Inventory']),
+                            len(filtered_df[filtered_df['Status'] == 'Within Norms'])
+                        ]
                     }
                     
-                    for key, value in summary_stats.items():
-                        st.metric(key, value)
+                    stats_df = pd.DataFrame(stats_data)
+                    st.dataframe(stats_df, use_container_width=True, hide_index=True)
             
             with col2:
-                st.subheader("🎯 Key Performance Indicators")
+                st.subheader("📈 Key Insights")
                 
                 if not filtered_df.empty:
-                    # Calculate KPIs
+                    # Calculate insights
                     total_items = len(filtered_df)
-                    critical_pct = (len(filtered_df[filtered_df['Coverage Days'] < 3]) / total_items * 100) if total_items > 0 else 0
-                    excess_pct = (len(filtered_df[filtered_df['Status'] == 'Excess Inventory']) / total_items * 100) if total_items > 0 else 0
-                    within_norms_pct = (len(filtered_df[filtered_df['Status'] == 'Within Norms']) / total_items * 100) if total_items > 0 else 0
+                    critical_items = len(filtered_df[filtered_df['Coverage Days'] < 7])
+                    excess_items = len(filtered_df[filtered_df['Status'] == 'Excess Inventory'])
                     
-                    # Stock efficiency
-                    avg_variance = abs(filtered_df['Variance %']).mean()
+                    if critical_items > 0:
+                        st.warning(f"🚨 {critical_items} items ({critical_items/total_items*100:.1f}%) need immediate attention")
                     
-                    kpis = {
-                        'Inventory Accuracy': f"{within_norms_pct:.1f}%",
-                        'Critical Stock Rate': f"{critical_pct:.1f}%",
-                        'Excess Stock Rate': f"{excess_pct:.1f}%",
-                        'Average Variance': f"{avg_variance:.1f}%",
-                        'Stock Efficiency Score': f"{max(0, 100 - avg_variance):.0f}/100"
-                    }
+                    if excess_items > 0:
+                        st.info(f"💰 {excess_items} items ({excess_items/total_items*100:.1f}%) have excess inventory")
                     
-                    for key, value in kpis.items():
-                        # Color coding for KPIs
-                        if 'Critical' in key:
-                            delta_color = "inverse" if critical_pct > 10 else "normal"
-                        elif 'Excess' in key:
-                            delta_color = "inverse" if excess_pct > 20 else "normal"
-                        else:
-                            delta_color = "normal"
-                        
-                        st.metric(key, value)
+                    # Top 5 items by coverage days (lowest first)
+                    st.subheader("🔥 Top 5 Most Critical Items")
+                    top_critical = filtered_df.nsmallest(5, 'Coverage Days')[['Part No', 'Description', 'Coverage Days']]
+                    st.dataframe(top_critical, use_container_width=True, hide_index=True)
             
-            # Detailed breakdowns
-            st.subheader("📈 Detailed Breakdowns")
-            
+            # Export options
+            st.subheader("📥 Export Options")
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.write("**By Classification:**")
-                if not filtered_df.empty:
-                    class_breakdown = filtered_df['Classification'].value_counts()
-                    for class_name, count in class_breakdown.items():
-                        pct = (count / len(filtered_df)) * 100
-                        st.write(f"• Class {class_name}: {count} ({pct:.1f}%)")
+                if st.button("📊 Export Dashboard Data"):
+                    excel_data = inv_system.export_to_excel(filtered_df)
+                    if excel_data:
+                        st.download_button(
+                            label="Download Excel Report",
+                            data=excel_data,
+                            file_name=f"inventory_dashboard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
             
             with col2:
-                st.write("**By Coverage Category:**")
-                if not filtered_df.empty:
-                    coverage_breakdown = filtered_df['Coverage Category'].value_counts()
-                    for category, count in coverage_breakdown.items():
-                        pct = (count / len(filtered_df)) * 100
-                        st.write(f"• {category}: {count} ({pct:.1f}%)")
+                if st.button("🚨 Export Critical Items"):
+                    critical_items = filtered_df[filtered_df['Coverage Days'] < 7]
+                    if not critical_items.empty:
+                        csv = critical_items.to_csv(index=False)
+                        st.download_button(
+                            label="Download Critical Items CSV",
+                            data=csv,
+                            file_name=f"critical_items_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv"
+                        )
+                    else:
+                        st.info("No critical items to export")
             
             with col3:
-                st.write("**By Status:**")
-                if not filtered_df.empty:
-                    status_breakdown = filtered_df['Status'].value_counts()
-                    for status, count in status_breakdown.items():
-                        pct = (count / len(filtered_df)) * 100
-                        st.write(f"• {status}: {count} ({pct:.1f}%)")
-            
-            # Action Items
-            st.subheader("🎯 Action Items")
-            
-            if not filtered_df.empty:
-                # Generate action items based on analysis
-                action_items = []
-                
-                critical_items = len(filtered_df[filtered_df['Coverage Days'] < 3])
-                if critical_items > 0:
-                    action_items.append(f"🚨 Urgent: Order stock for {critical_items} critical items")
-                
-                excess_items = len(filtered_df[filtered_df['Status'] == 'Excess Inventory'])
-                if excess_items > 0:
-                    action_items.append(f"📉 Review: {excess_items} items have excess inventory")
-                
-                short_items = len(filtered_df[filtered_df['Status'] == 'Short Inventory'])
-                if short_items > 0:
-                    action_items.append(f"📈 Reorder: {short_items} items need stock replenishment")
-                
-                high_consumption = filtered_df[filtered_df['Avg Consumption'] > filtered_df['Avg Consumption'].quantile(0.8)]
-                if not high_consumption.empty:
-                    action_items.append(f"👀 Monitor: {len(high_consumption)} high-consumption items need close monitoring")
-                
-                if action_items:
-                    for i, item in enumerate(action_items, 1):
-                        st.write(f"{i}. {item}")
-                else:
-                    st.success("✅ No immediate action items - inventory levels are healthy!")
+                if st.button("💰 Export Excess Inventory"):
+                    excess_items = filtered_df[filtered_df['Status'] == 'Excess Inventory']
+                    if not excess_items.empty:
+                        csv = excess_items.to_csv(index=False)
+                        st.download_button(
+                            label="Download Excess Items CSV",
+                            data=csv,
+                            file_name=f"excess_inventory_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv"
+                        )
+                    else:
+                        st.info("No excess items to export")
     
     else:
-        st.info("No inventory data available. Upload a file or use the sample data to get started.")
+        st.info("📁 Please upload an Excel file or use the sample data to get started!")
+        
+        # Show sample data format
+        st.subheader("📋 Expected Data Format")
+        sample_format = pd.DataFrame({
+            'Part No': ['123/45376', '124/45377'],
+            'Part Description': ['Tyre A', 'Brake Pad B'],
+            'Part Classification': ['A', 'A'],
+            'Inventory Class': ['A1', 'A1'],
+            'Average Consumption/Day': [32, 25],
+            'RM Norms - In Days': [3, 7],
+            'RM Norms - In Qty': [96, 175],
+            'Current Stock Qty': [2020, 50]
+        })
+        st.dataframe(sample_format, use_container_width=True)
     
-    # Add new part form (modal-like)
-    if st.session_state.get('show_add_form', False):
-        with st.expander("➕ Add New Part", expanded=True):
-            with st.form("add_part_form"):
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    new_part_no = st.text_input("Part Number*")
-                    new_description = st.text_input("Description*")
-                    new_classification = st.selectbox("Classification*", ["A", "B", "C"])
-                    new_inv_class = st.text_input("Inventory Class")
-                
-                with col2:
-                    new_avg_consumption = st.number_input("Average Consumption/Day*", min_value=0.0, step=0.1)
-                    new_rm_norms_days = st.number_input("RM Norms (Days)*", min_value=0.0, step=1.0)
-                    new_rm_norms_qty = st.number_input("RM Norms (Qty)*", min_value=0.0, step=1.0)
-                    new_current_stock = st.number_input("Current Stock*", min_value=0.0, step=1.0)
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    submitted = st.form_submit_button("Add Part", use_container_width=True)
-                with col2:
-                    if st.form_submit_button("Cancel", use_container_width=True):
-                        st.session_state.show_add_form = False
-                        st.rerun()
-                
-                if submitted:
-                    if all([new_part_no, new_description, new_avg_consumption, new_rm_norms_days, new_rm_norms_qty]):
-                        # Add new part to the data
-                        new_part_data = [{
-                            'Part No': new_part_no,
-                            'Part Description': new_description,
-                            'Part Classification': new_classification,
-                            'Inventory Class': new_inv_class,
-                            'Average Consumption/Day': new_avg_consumption,
-                            'RM Norms - In Days': new_rm_norms_days,
-                            'RM Norms - In Qty': new_rm_norms_qty,
-                            'Current Stock Qty': new_current_stock
-                        }]
-                        
-                        # Process and add the new data
-                        inv_system.process_imported_data(st.session_state.inventory_data + 
-                                                       [dict(zip(['Part No', 'Description', 'Classification', 'Inventory Class',
-                                                                'Avg Consumption', 'RM Norms Days', 'RM Norms Qty', 'Current Stock'],
-                                                               [item['Part No'], item['Description'], item['Classification'], 
-                                                                item['Inventory Class'], item['Avg Consumption'], item['RM Norms Days'],
-                                                                item['RM Norms Qty'], item['Current Stock']])) 
-                                                        for item in st.session_state.inventory_data] + 
-                                                       [{'Part No': new_part_no, 'Description': new_description, 
-                                                         'Classification': new_classification, 'Inventory Class': new_inv_class,
-                                                         'Avg Consumption': new_avg_consumption, 'RM Norms Days': new_rm_norms_days,
-                                                         'RM Norms Qty': new_rm_norms_qty, 'Current Stock': new_current_stock}])
-                        
-                        st.success(f"Part {new_part_no} added successfully!")
-                        st.session_state.show_add_form = False
-                        st.rerun()
-                    else:
-                        st.error("Please fill in all required fields (marked with *)")
-
+    # Add New Part Form (Modal-like behavior)
+    if st.session_state.show_add_form:
+        st.subheader("➕ Add New Part")
+        
+        with st.form("add_part_form"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                new_part_no = st.text_input("Part Number *")
+                new_description = st.text_input("Description *")
+                new_classification = st.selectbox("Classification *", ["A", "B", "C"])
+                new_inv_class = st.text_input("Inventory Class")
+            
+            with col2:
+                new_avg_consumption = st.number_input("Average Consumption/Day *", min_value=0.0, value=1.0)
+                new_rm_days = st.number_input("RM Norms - Days *", min_value=0.0, value=7.0)
+                new_rm_qty = st.number_input("RM Norms - Qty *", min_value=0.0, value=10.0)
+                new_current_stock = st.number_input("Current Stock Qty *", min_value=0.0, value=0.0)
+            
+            col1, col2, col3 = st.columns([1, 1, 2])
+            with col1:
+                submitted = st.form_submit_button("✅ Add Part")
+            with col2:
+                cancel = st.form_submit_button("❌ Cancel")
+            
+            if submitted:
+                if new_part_no and new_description and new_avg_consumption > 0:
+                    # Add to existing data
+                    new_item = {
+                        'Part No': new_part_no,
+                        'Part Description': new_description,
+                        'Part Classification': new_classification,
+                        'Inventory Class': new_inv_class,
+                        'Average Consumption/Day': new_avg_consumption,
+                        'RM Norms - In Days': new_rm_days,
+                        'RM Norms - In Qty': new_rm_qty,
+                        'Current Stock Qty': new_current_stock
+                    }
+                    
+                    inv_system.process_imported_data([new_item] + 
+                        [{
+                            'Part No': item['Part No'],
+                            'Part Description': item['Description'],
+                            'Part Classification': item['Classification'],
+                            'Inventory Class': item['Inventory Class'],
+                            'Average Consumption/Day': item['Avg Consumption'],
+                            'RM Norms - In Days': item['RM Norms Days'],
+                            'RM Norms - In Qty': item['RM Norms Qty'],
+                            'Current Stock Qty': item['Current Stock']
+                        } for item in st.session_state.inventory_data]
+                    )
+                    
+                    st.success("✅ Part added successfully!")
+                    st.session_state.show_add_form = False
+                    st.rerun()
+                else:
+                    st.error("Please fill in all required fields marked with *")
+            
+            if cancel:
+                st.session_state.show_add_form = False
+                st.rerun()
+    
     # Footer
     st.markdown("---")
     st.markdown(
-        "<div style='text-align: center; color: #666; margin-top: 2rem;'>"
-        "<p>Inventory Coverage Meter v2.0 | Built with ❤️ by Agilomatrix</p>"
+        "<div style='text-align: center; color: gray; padding: 20px;'>"
+        "Inventory Coverage Meter v1.0 | Designed and Developed by Agilomatrix"
         "</div>",
         unsafe_allow_html=True
     )
