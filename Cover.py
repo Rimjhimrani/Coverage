@@ -213,15 +213,15 @@ class InventoryManagementSystem:
                     'Description': str(description) if description else '',
                     'Classification': str(classification) if classification else '',
                     'Inventory Class': str(inv_class) if inv_class else '',
-                    'Avg Consumption': avg_consumption,
-                    'RM Norms Days': rm_norms_days,
-                    'RM Norms Qty': rm_norms_qty,
-                    'Revised Qty': round(revised_qty, 2),
-                    'Current Stock': current_stock,
-                    'Variance %': round(variance_pct, 2),
-                    'Variance Qty': round(variance_qty, 2),
+                    'Avg Consumption': round(avg_consumption),  # Rounded to whole number
+                    'RM Norms Days': round(rm_norms_days),  # Rounded to whole number
+                    'RM Norms Qty': round(rm_norms_qty),  # Rounded to whole number
+                    'Revised Qty': round(revised_qty),  # Rounded to whole number
+                    'Current Stock': round(current_stock),  # Rounded to whole number
+                    'Variance %': round(variance_pct, 1),  # Rounded to 1 decimal place
+                    'Variance Qty': round(variance_qty),  # Rounded to whole number
                     'Status': status,
-                    'Coverage Days': round(coverage_days, 2) if coverage_days != 999 else 999,
+                    'Coverage Days': round(coverage_days) if coverage_days != 999 else 999,  # Rounded to whole number
                     'Coverage Category': coverage_category
                 }
                 
@@ -446,7 +446,7 @@ class InventoryManagementSystem:
                 'Avg Consumption': ['mean', 'sum'],
                 'Current Stock': ['mean', 'sum'],
                 'Coverage Days': 'mean'
-            }).round(2)
+            }).round(0)  # Round to whole numbers
             
             trends_data.columns = ['Avg Daily Consumption', 'Total Daily Consumption', 
                                   'Avg Current Stock', 'Total Current Stock', 'Avg Coverage Days']
@@ -672,7 +672,7 @@ def main():
         
         with col2:
             critical_count = len(filtered_df[filtered_df['Coverage Days'] < 3])
-            delta_text = f"{critical_count/len(filtered_df)*100:.1f}%" if len(filtered_df) > 0 else "0%"
+            delta_text = f"{round(critical_count/len(filtered_df)*100, 1)}%" if len(filtered_df) > 0 else "0%"
             st.metric("Critical Items", critical_count, delta=delta_text)
         
         with col3:
@@ -719,7 +719,7 @@ def main():
             if not filtered_df.empty:
                 # Format numeric columns
                 display_df = filtered_df.copy()
-                display_df['Variance %'] = display_df['Variance %'].apply(lambda x: f"{x:.1f}%")
+                display_df['Variance %'] = display_df['Variance %'].apply(lambda x: f"{x}%")
                 
                 st.dataframe(
                     display_df,
@@ -729,28 +729,54 @@ def main():
                         "Coverage Days": st.column_config.NumberColumn(
                             "Coverage Days",
                             help="Days of stock coverage",
-                            format="%.1f",
+                            format="%d",  # Format as integer
                         ),
                         "Status": st.column_config.TextColumn(
                             "Status",
                             help="Inventory status based on tolerance"
+                        ),
+                        "Avg Consumption": st.column_config.NumberColumn(
+                            "Avg Consumption",
+                            help="Average daily consumption",
+                            format="%d",  # Format as integer
+                        ),
+                        "Current Stock": st.column_config.NumberColumn(
+                            "Current Stock",
+                            help="Current stock quantity",
+                            format="%d",  # Format as integer
+                        ),
+                        "RM Norms Qty": st.column_config.NumberColumn(
+                            "RM Norms Qty",
+                            help="Required material norms quantity",
+                            format="%d",  # Format as integer
+                        ),
+                        
+                        "Revised Qty": st.column_config.NumberColumn(
+                            "Revised Qty",
+                            help="Revised quantity with tolerance",
+                            format="%d",  # Format as integer
+                        ),
+                        "Variance Qty": st.column_config.NumberColumn(
+                            "Variance Qty",
+                            help="Variance in quantity",
+                            format="%d",  # Format as integer
                         )
                     }
                 )
+
             else:
-                st.warning("No data matches the current filters.")
+                st.warning("No items match the current filters.")
         
         with tab2:
             st.subheader("Coverage Dashboard")
             
             if not filtered_df.empty:
                 # Create dashboard charts
-                charts = inv_system.create_coverage_dashboard(filtered_df)
-                if charts and all(chart is not None for chart in charts):
-                    fig_coverage, fig_status, fig_class, fig_histogram = charts
-                    
-                    # Display charts in columns
+                fig_coverage, fig_status, fig_class, fig_histogram = inv_system.create_coverage_dashboard(filtered_df)
+                
+                if all([fig_coverage, fig_status, fig_class, fig_histogram]):
                     col1, col2 = st.columns(2)
+                    
                     with col1:
                         st.plotly_chart(fig_coverage, use_container_width=True)
                         st.plotly_chart(fig_class, use_container_width=True)
@@ -759,36 +785,34 @@ def main():
                         st.plotly_chart(fig_status, use_container_width=True)
                         st.plotly_chart(fig_histogram, use_container_width=True)
                 else:
-                    st.error("Error generating dashboard charts")
+                    st.error("Unable to generate dashboard charts")
             else:
-                st.warning("No data available for dashboard")
+                st.warning("No data available for dashboard visualization.")
         
         with tab3:
             st.subheader("Stock Analysis")
             
             if not filtered_df.empty:
                 # Create analysis charts
-                analysis_charts = inv_system.create_stock_analysis_charts(filtered_df)
-                if analysis_charts and all(chart is not None for chart in analysis_charts):
-                    fig_scatter, fig_variance = analysis_charts
-                    
+                fig_scatter, fig_variance = inv_system.create_stock_analysis_charts(filtered_df)
+                
+                if fig_scatter and fig_variance:
                     st.plotly_chart(fig_scatter, use_container_width=True)
                     st.plotly_chart(fig_variance, use_container_width=True)
                     
                     # Consumption trends
-                    st.subheader("Consumption Trends")
                     fig_trends = inv_system.create_consumption_trends_chart(filtered_df)
                     if fig_trends:
                         st.plotly_chart(fig_trends, use_container_width=True)
                 else:
-                    st.error("Error generating analysis charts")
+                    st.error("Unable to generate analysis charts")
             else:
-                st.warning("No data available for analysis")
+                st.warning("No data available for stock analysis.")
         
         with tab4:
             st.subheader("Critical Items Analysis")
             
-            # Critical items (< 7 days coverage)
+            # Critical items (less than 7 days coverage)
             critical_df = filtered_df[filtered_df['Coverage Days'] < 7]
             
             if not critical_df.empty:
@@ -799,200 +823,210 @@ def main():
                 
                 # Display critical items
                 st.dataframe(
-                    critical_df_sorted[['Part No', 'Description', 'Coverage Days', 'Current Stock', 'Avg Consumption']],
+                    critical_df_sorted[['Part No', 'Description', 'Current Stock', 
+                                      'Avg Consumption', 'Coverage Days', 'Status']],
                     use_container_width=True,
                     column_config={
                         "Coverage Days": st.column_config.NumberColumn(
                             "Coverage Days",
-                            help="Days until stock runs out",
-                            format="%.1f",
+                            help="Days of stock coverage",
+                            format="%d",
                         )
                     }
                 )
                 
                 # Critical items chart
-                fig_critical = px.bar(
-                    critical_df_sorted.head(10),
-                    x='Part No',
-                    y='Coverage Days',
-                    title="Top 10 Most Critical Items",
-                    color='Coverage Days',
-                    color_continuous_scale='Reds_r'
-                )
-                fig_critical.update_layout(xaxis_tickangle=-45)
-                st.plotly_chart(fig_critical, use_container_width=True)
-                
+                if len(critical_df_sorted) > 0:
+                    fig_critical = px.bar(
+                        critical_df_sorted.head(10),  # Top 10 most critical
+                        x='Part No',
+                        y='Coverage Days',
+                        color='Coverage Days',
+                        title="Most Critical Items (Top 10)",
+                        color_continuous_scale='Reds'
+                    )
+                    fig_critical.update_layout(xaxis_tickangle=-45)
+                    st.plotly_chart(fig_critical, use_container_width=True)
             else:
                 st.success("✅ No critical items found!")
         
         with tab5:
-            st.subheader("Reports & Insights")
-            
-            if not filtered_df.empty:
-                # Summary statistics
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.markdown("### 📈 Key Statistics")
-                    
-                    # Calculate key stats
-                    total_items = len(filtered_df)
-                    critical_items = len(filtered_df[filtered_df['Coverage Days'] < 7])
-                    excess_items = len(filtered_df[filtered_df['Status'] == 'Excess Inventory'])
-                    short_items = len(filtered_df[filtered_df['Status'] == 'Short Inventory'])
-                    avg_coverage = filtered_df['Coverage Days'].mean()
-                    total_stock_value = filtered_df['Current Stock'].sum()
-                    
-                    stats_data = {
-                        'Metric': [
-                            'Total Items',
-                            'Critical Items (< 7 days)',
-                            'Excess Inventory Items',
-                            'Short Inventory Items',
-                            'Average Coverage Days',
-                            'Total Stock Quantity'
-                        ],
-                        'Value': [
-                            total_items,
-                            critical_items,
-                            excess_items,  
-                            short_items,
-                            f"{avg_coverage:.1f}",
-                            f"{total_stock_value:,.0f}"
-                        ]
-                    }
-                    
-                    stats_df = pd.DataFrame(stats_data)
-                    st.dataframe(stats_df, use_container_width=True, hide_index=True)
-                
-                with col2:
-                    st.markdown("### 🎯 Recommendations")
-                    
-                    recommendations = []
-                    
-                    if critical_items > 0:
-                        recommendations.append(f"🔴 **Urgent**: {critical_items} items need immediate restocking")
-                    
-                    if excess_items > 0:
-                        recommendations.append(f"🟡 **Review**: {excess_items} items have excess inventory")
-                    
-                    if short_items > 0:
-                        recommendations.append(f"🟠 **Plan**: {short_items} items are running short")
-                    
-                    if avg_coverage < 30:
-                        recommendations.append("📉 **Alert**: Average coverage is below 30 days")
-                    
-                    if not recommendations:
-                        recommendations.append("✅ **Good**: Inventory levels are well managed")
-                    
-                    for rec in recommendations:
-                        st.markdown(rec)
-                
-                # Classification breakdown
-                st.markdown("### 📊 Classification Analysis")
-                
-                class_analysis = filtered_df.groupby('Classification').agg({
-                    'Current Stock': 'sum',
-                    'Avg Consumption': 'sum',
-                    'Coverage Days': 'mean',
-                    'Status': lambda x: (x == 'Excess Inventory').sum()
-                }).round(2)
-                
-                class_analysis.columns = ['Total Stock', 'Total Daily Consumption', 'Avg Coverage Days', 'Excess Items']
-                st.dataframe(class_analysis, use_container_width=True)
-                
-                # Export options
-                st.markdown("### 📥 Export Options")
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    if st.button("📊 Export Dashboard Data"):
-                        excel_data = inv_system.export_to_excel(filtered_df)
-                        if excel_data:
-                            st.download_button(
-                                label="Download Complete Report",
-                                data=excel_data,
-                                file_name=f"inventory_dashboard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                            )
-                
-                with col2:
-                    if critical_items > 0 and st.button("🚨 Export Critical Items"):
-                        critical_excel = inv_system.export_to_excel(critical_df)
-                        if critical_excel:
-                            st.download_button(
-                                label="Download Critical Items",
-                                data=critical_excel,
-                                file_name=f"critical_items_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                            )
-                
-                with col3:
-                    if excess_items > 0 and st.button("📈 Export Excess Items"):
-                        excess_excel_df = filtered_df[filtered_df['Status'] == 'Excess Inventory']
-                        excess_excel = inv_system.export_to_excel(excess_excel_df)
-                        if excess_excel:
-                            st.download_button(
-                                label="Download Excess Items",
-                                data=excess_excel,
-                                file_name=f"excess_items_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                            )
-            else:
-                st.warning("No data available for reports")
-    
-    else:
-        st.info("No inventory data available. Please import data or add items manually.")
-    
-    # Add new part form (modal-like)
-    if st.session_state.show_add_form:
-        with st.form("add_new_part"):
-            st.subheader("Add New Part")
+            st.subheader("Reports & Export")
             
             col1, col2 = st.columns(2)
             
             with col1:
-                new_part_no = st.text_input("Part Number*")
-                new_description = st.text_input("Description*")
-                new_classification = st.selectbox("Classification*", ["A", "B", "C"])
-                new_inventory_class = st.text_input("Inventory Class")
+                st.subheader("📊 Summary Statistics")
+                
+                # Calculate summary statistics
+                total_items = len(filtered_df)
+                if total_items > 0:
+                    critical_items = len(filtered_df[filtered_df['Coverage Days'] < 3])
+                    warning_items = len(filtered_df[(filtered_df['Coverage Days'] >= 3) & 
+                                                   (filtered_df['Coverage Days'] < 7)])
+                    excess_items = len(filtered_df[filtered_df['Status'] == 'Excess Inventory'])
+                    short_items = len(filtered_df[filtered_df['Status'] == 'Short Inventory'])
+                    normal_items = len(filtered_df[filtered_df['Status'] == 'Within Norms'])
+                    
+                    avg_coverage = filtered_df['Coverage Days'].mean()
+                    total_stock_value = filtered_df['Current Stock'].sum()
+                    total_consumption = filtered_df['Avg Consumption'].sum()
+                    
+                    # Display metrics
+                    metrics_data = {
+                        'Metric': [
+                            'Total Items',
+                            'Critical Items (< 3 days)',
+                            'Warning Items (3-7 days)',
+                            'Excess Inventory',
+                            'Short Inventory',
+                            'Within Norms',
+                            'Average Coverage Days',
+                            'Total Stock Quantity',
+                            'Total Daily Consumption'
+                        ],
+                        'Value': [
+                            total_items,
+                            critical_items,
+                            warning_items,
+                            excess_items,
+                            short_items,
+                            normal_items,
+                            f"{avg_coverage:.1f} days",
+                            f"{total_stock_value:,}",
+                            f"{total_consumption:,}"
+                        ],
+                        'Percentage': [
+                            '100%',
+                            f"{critical_items/total_items*100:.1f}%" if total_items > 0 else '0%',
+                            f"{warning_items/total_items*100:.1f}%" if total_items > 0 else '0%',
+                            f"{excess_items/total_items*100:.1f}%" if total_items > 0 else '0%',
+                            f"{short_items/total_items*100:.1f}%" if total_items > 0 else '0%',
+                            f"{normal_items/total_items*100:.1f}%" if total_items > 0 else '0%',
+                            '-',
+                            '-',
+                            '-'
+                        ]
+                    }
+                    
+                    st.dataframe(pd.DataFrame(metrics_data), use_container_width=True, hide_index=True)
+                else:
+                    st.warning("No data available for summary statistics.")
             
             with col2:
-                new_avg_consumption = st.number_input("Average Consumption/Day*", min_value=0.0, step=0.1)
-                new_rm_norms_days = st.number_input("RM Norms - Days*", min_value=0.0, step=1.0)
-                new_rm_norms_qty = st.number_input("RM Norms - Quantity*", min_value=0.0, step=1.0)
+                st.subheader("📥 Export Options")
+                
+                # Export buttons
+                if st.button("📊 Export Summary Report", use_container_width=True):
+                    excel_data = inv_system.export_to_excel(filtered_df)
+                    if excel_data:
+                        st.download_button(
+                            label="💾 Download Complete Report",
+                            data=excel_data,
+                            file_name=f"inventory_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
+                
+                if st.button("⚠️ Export Critical Items Only", use_container_width=True):
+                    critical_df = filtered_df[filtered_df['Coverage Days'] < 7]
+                    if not critical_df.empty:
+                        excel_data = inv_system.export_to_excel(critical_df)
+                        if excel_data:
+                            st.download_button(
+                                label="💾 Download Critical Items",
+                                data=excel_data,
+                                file_name=f"critical_items_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
+                    else:
+                        st.info("No critical items to export")
+                
+                if st.button("📈 Export Excess Inventory", use_container_width=True):
+                    excess_df = filtered_df[filtered_df['Status'] == 'Excess Inventory']
+                    if not excess_df.empty:
+                        excel_data = inv_system.export_to_excel(excess_df)
+                        if excel_data:
+                            st.download_button(
+                                label="💾 Download Excess Inventory",
+                                data=excel_data,
+                                file_name=f"excess_inventory_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
+                    else:
+                        st.info("No excess inventory to export")
+    
+    else:
+        st.info("No inventory data available. Please import an Excel file or add items manually.")
+    
+    # Add new part form (modal-like behavior)
+    if st.session_state.show_add_form:
+        st.markdown("---")
+        st.subheader("➕ Add New Inventory Item")
+        
+        with st.form("add_part_form"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                new_part_no = st.text_input("Part Number*", placeholder="Enter part number")
+                new_description = st.text_input("Description*", placeholder="Enter description")
+                new_classification = st.selectbox("Classification*", ["A", "B", "C"])
+                new_inv_class = st.text_input("Inventory Class", placeholder="e.g., A1, B2, C1")
+            
+            with col2:
+                new_avg_consumption = st.number_input("Average Consumption/Day*", min_value=0.0, step=1.0)
+                new_rm_days = st.number_input("RM Norms - Days*", min_value=0.0, step=1.0)
+                new_rm_qty = st.number_input("RM Norms - Quantity*", min_value=0.0, step=1.0)
                 new_current_stock = st.number_input("Current Stock*", min_value=0.0, step=1.0)
             
             col1, col2, col3 = st.columns([1, 1, 1])
             
             with col1:
-                if st.form_submit_button("Add Part", use_container_width=True):
-                    if new_part_no and new_description and new_avg_consumption > 0:
-                        # Add new part to data
-                        new_part = {
+                if st.form_submit_button("✅ Add Item", use_container_width=True):
+                    if all([new_part_no, new_description, new_avg_consumption >= 0, 
+                           new_rm_days >= 0, new_rm_qty >= 0, new_current_stock >= 0]):
+                        
+                        # Add new item to data
+                        new_item = {
                             'Part No': new_part_no,
                             'Part Description': new_description,
                             'Part Classification': new_classification,
-                            'Inventory Class': new_inventory_class,
+                            'Inventory Class': new_inv_class or 'N/A',
                             'Average Consumption/Day': new_avg_consumption,
-                            'RM Norms - In Days': new_rm_norms_days,
-                            'RM Norms - In Qty': new_rm_norms_qty,
+                            'RM Norms - In Days': new_rm_days,
+                            'RM Norms - In Qty': new_rm_qty,
                             'Current Stock Qty': new_current_stock
                         }
                         
-                        # Process the new part
-                        inv_system.process_imported_data([new_part])
-                        st.success("Part added successfully!")
+                        # Process the new item
+                        inv_system.process_imported_data([new_item])
+                        
+                        st.success("✅ Item added successfully!")
                         st.session_state.show_add_form = False
                         st.rerun()
                     else:
-                        st.error("Please fill in all required fields marked with *")
+                        st.error("Please fill in all required fields (*)")
             
             with col2:
-                if st.form_submit_button("Cancel", use_container_width=True):
+                if st.form_submit_button("❌ Cancel", use_container_width=True):
                     st.session_state.show_add_form = False
                     st.rerun()
+            
+            with col3:
+                if st.form_submit_button("🔄 Reset", use_container_width=True):
+                    st.rerun()
+    
+    # Footer
+    st.markdown("---")
+    st.markdown(
+        "<div style='text-align: center; color: #666; font-size: 14px;'>"
+        "Inventory Coverage Meter v2.0 | Built with Streamlit | "
+        f"Current Tolerance: ±{st.session_state.tolerance}%"
+        "</div>",
+        unsafe_allow_html=True
+    )
 
 if __name__ == "__main__":
     main()
