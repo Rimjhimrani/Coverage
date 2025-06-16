@@ -521,12 +521,13 @@ def main():
     inv_system = InventoryManagementSystem()
     
     # Header
-    st.markdown("""
-    <div class="main-header">
-        <h1>📦 Inventory Management System with Analytic</h1>
-        <p>Advanced inventory tracking and analysis dashboard</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.title("📦 Inventory Coverage Meter")
+    
+    st.markdown(
+        "<p style='font-size:18px; font-style:italic; margin-top:-10px; text-align:left;'>"
+        "Designed and Developed by Agilomatrix</p>",
+        unsafe_allow_html=True
+    )
     
     # Sidebar for controls
     with st.sidebar:
