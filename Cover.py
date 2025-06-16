@@ -240,6 +240,15 @@ class InventoryManagementSystem:
                 return row[name]
         return None
     
+    def safe_int(self, value):
+        """Convert a string or number to int, removing commas."""
+        if isinstance(value, str):
+            value = value.replace(",", "").strip()
+        try:
+            return int(round(float(value)))
+        except:
+            return 0
+    
     def determine_coverage_category(self, days):
         """Determine coverage category based on days"""
         if days < 3:
