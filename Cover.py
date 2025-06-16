@@ -9,8 +9,9 @@ import io
 from collections import Counter
 import warnings
 
-# Suppress warnings
-warnings.filterwarnings('ignore', category=np.RankWarning)
+# Suppress warnings - Fixed the NumPy warning issue
+warnings.filterwarnings('ignore')
+# Remove the problematic np.RankWarning line as it doesn't exist in newer NumPy versions
 
 # Page configuration
 st.set_page_config(
@@ -295,33 +296,6 @@ class InventoryManagementSystem:
             filtered_df = filtered_df[filtered_df['Coverage Days'] < 7]
         
         return filtered_df
-    
-    def style_dataframe(self, df):
-        """Apply styling to dataframe based on status"""
-        def highlight_status(row):
-            if row['Status'] == 'Excess Inventory':
-                return ['background-color: #ffebee'] * len(row)
-            elif row['Status'] == 'Short Inventory':
-                return ['background-color: #fff3e0'] * len(row)
-            elif row['Status'] == 'Within Norms':
-                return ['background-color: #e8f5e8'] * len(row)
-            else:
-                return [''] * len(row)
-        
-        def highlight_coverage(val):
-            if val < 3:
-                return 'color: #f44336; font-weight: bold'
-            elif val < 7:
-                return 'color: #ff9800; font-weight: bold'
-            elif val < 30:
-                return 'color: #4caf50'
-            else:
-                return ''
-        
-        styled_df = df.style.apply(highlight_status, axis=1)
-        styled_df = styled_df.applymap(highlight_coverage, subset=['Coverage Days'])
-        
-        return styled_df
     
     def create_coverage_dashboard(self, df):
         """Create coverage dashboard with multiple charts"""
@@ -679,7 +653,7 @@ def main():
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
             
-            # Display dataframe with styling
+            # Display dataframe
             if not filtered_df.empty:
                 # Format numeric columns
                 display_df = filtered_df.copy()
@@ -781,22 +755,28 @@ def main():
                 for _, item in critical_df_sorted.head(5).iterrows():
                     days_left = item['Coverage Days']
                     if days_left < 1:
-                        urgency = "🔴 URGENT"
-                        action = "Immediate procurement required!"
+                        urgency = "🚨 URGENT"
+                        color = "red"
                     elif days_left < 3:
-                        urgency = "🟠 HIGH"
-                        action = "Expedite procurement process"
+                        urgency = "⚠️ HIGH PRIORITY"
+                        color = "orange"
                     else:
-                        urgency = "🟡 MEDIUM"
-                        action = "Plan procurement within 2-3 days"
+                        urgency = "⚡ MEDIUM PRIORITY"
+                        color = "yellow"
                     
-                    st.warning(f"{urgency} - **{item['Part No']}**: {item['Description']} "
-                             f"({days_left:.1f} days left) - {action}")
+                    st.markdown(f"""
+                    <div style="background-color: {color}20; border-left: 4px solid {color}; padding: 10px; margin: 5px 0; border-radius: 5px;">
+                        <strong>{urgency}</strong><br>
+                        <strong>Part:</strong> {item['Part No']} - {item['Description']}<br>
+                        <strong>Days Left:</strong> {days_left:.1f} days<br>
+                        <strong>Recommended Action:</strong> Order immediately - {int(item['Avg Consumption'] * item['RM Norms Days'])} units needed
+                    </div>
+                    """, unsafe_allow_html=True)
             else:
-                st.success("✅ No critical items found with current filters!")
+                st.success("✅ No critical stock items found!")
         
         with tab5:
-            st.subheader("Reports & Analytics")
+            st.subheader("📑 Reports & Analytics")
             
             # Summary statistics
             col1, col2 = st.columns(2)
@@ -804,223 +784,184 @@ def main():
             with col1:
                 st.subheader("📊 Summary Statistics")
                 
-                # Calculate summary stats
-                total_value = filtered_df['Current Stock'].sum()
-                avg_coverage = filtered_df['Coverage Days'].mean()
-                median_coverage = filtered_df['Coverage Days'].median()
-                
-                # Coverage distribution
-                coverage_dist = filtered_df['Coverage Category'].value_counts()
-                
-                # Status distribution
-                status_dist = filtered_df['Status'].value_counts()
-                
-                # Display summary metrics
-                st.metric("Total Stock Value", f"{total_value:,.0f} units")
-                st.metric("Average Coverage", f"{avg_coverage:.1f} days")
-                st.metric("Median Coverage", f"{median_coverage:.1f} days")
-                
-                # Coverage distribution table
-                st.subheader("Coverage Distribution")
-                coverage_table = pd.DataFrame({
-                    'Category': coverage_dist.index,
-                    'Count': coverage_dist.values,
-                    'Percentage': (coverage_dist.values / len(filtered_df) * 100).round(1)
-                })
-                st.dataframe(coverage_table, use_container_width=True)
+                if not filtered_df.empty:
+                    total_value = filtered_df['Current Stock'].sum()
+                    avg_coverage = filtered_df['Coverage Days'].mean()
+                    
+                    summary_stats = {
+                        'Total Items': len(filtered_df),
+                        'Total Stock Quantity': f"{total_value:,.0f}",
+                        'Average Coverage Days': f"{avg_coverage:.1f}",
+                        'Critical Items (< 3 days)': len(filtered_df[filtered_df['Coverage Days'] < 3]),
+                        'Warning Items (3-7 days)': len(filtered_df[(filtered_df['Coverage Days'] >= 3) & (filtered_df['Coverage Days'] < 7)]),
+                        'Excess Inventory Items': len(filtered_df[filtered_df['Status'] == 'Excess Inventory']),
+                        'Short Inventory Items': len(filtered_df[filtered_df['Status'] == 'Short Inventory']),
+                        'Items Within Norms': len(filtered_df[filtered_df['Status'] == 'Within Norms'])
+                    }
+                    
+                    for key, value in summary_stats.items():
+                        st.metric(key, value)
             
             with col2:
-                st.subheader("📈 Key Insights")
+                st.subheader("🎯 Key Performance Indicators")
                 
-                # Generate insights
-                insights = []
-                
-                # Critical stock insight
-                critical_pct = len(filtered_df[filtered_df['Coverage Days'] < 7]) / len(filtered_df) * 100
-                if critical_pct > 20:
-                    insights.append(f"🔴 **High Risk**: {critical_pct:.1f}% of items have critical stock levels")
-                elif critical_pct > 10:
-                    insights.append(f"🟠 **Medium Risk**: {critical_pct:.1f}% of items have critical stock levels")
-                else:
-                    insights.append(f"🟢 **Low Risk**: Only {critical_pct:.1f}% of items have critical stock levels")
-                
-                # Excess inventory insight
-                excess_pct = len(filtered_df[filtered_df['Status'] == 'Excess Inventory']) / len(filtered_df) * 100
-                if excess_pct > 30:
-                    insights.append(f"💰 **High Excess**: {excess_pct:.1f}% of items are overstocked")
-                elif excess_pct > 15:
-                    insights.append(f"💰 **Medium Excess**: {excess_pct:.1f}% of items are overstocked")
-                
-                # Classification insights
-                class_a_count = len(filtered_df[filtered_df['Classification'] == 'A'])
-                class_a_critical = len(filtered_df[(filtered_df['Classification'] == 'A') & 
-                                                 (filtered_df['Coverage Days'] < 7)])
-                if class_a_critical > 0:
-                    insights.append(f"⚠️ **Class A Alert**: {class_a_critical} critical Class A items need attention")
-                
-                # Display insights
-                if insights:
-                    for insight in insights:
-                        st.markdown(insight)
-                else:
-                    st.success("✅ All inventory levels are within acceptable ranges!")
-                
-                # Recommendations
-                st.subheader("💡 Recommendations")
-                recommendations = []
-                
-                if critical_pct > 15:
-                    recommendations.append("• Review procurement lead times for critical items")
-                    recommendations.append("• Consider increasing safety stock levels")
-                
-                if excess_pct > 20:
-                    recommendations.append("• Implement usage-based ordering system")
-                    recommendations.append("• Review excess inventory for potential returns")
-                
-                if len(filtered_df[filtered_df['Avg Consumption'] == 0]) > 0:
-                    recommendations.append("• Update consumption data for zero-usage items")
-                
-                if not recommendations:
-                    recommendations.append("• Maintain current inventory management practices")
-                    recommendations.append("• Regular monitoring and periodic reviews")
-                
-                for rec in recommendations:
-                    st.markdown(rec)
+                if not filtered_df.empty:
+                    # Calculate KPIs
+                    total_items = len(filtered_df)
+                    critical_pct = (len(filtered_df[filtered_df['Coverage Days'] < 3]) / total_items * 100) if total_items > 0 else 0
+                    excess_pct = (len(filtered_df[filtered_df['Status'] == 'Excess Inventory']) / total_items * 100) if total_items > 0 else 0
+                    within_norms_pct = (len(filtered_df[filtered_df['Status'] == 'Within Norms']) / total_items * 100) if total_items > 0 else 0
+                    
+                    # Stock efficiency
+                    avg_variance = abs(filtered_df['Variance %']).mean()
+                    
+                    kpis = {
+                        'Inventory Accuracy': f"{within_norms_pct:.1f}%",
+                        'Critical Stock Rate': f"{critical_pct:.1f}%",
+                        'Excess Stock Rate': f"{excess_pct:.1f}%",
+                        'Average Variance': f"{avg_variance:.1f}%",
+                        'Stock Efficiency Score': f"{max(0, 100 - avg_variance):.0f}/100"
+                    }
+                    
+                    for key, value in kpis.items():
+                        # Color coding for KPIs
+                        if 'Critical' in key:
+                            delta_color = "inverse" if critical_pct > 10 else "normal"
+                        elif 'Excess' in key:
+                            delta_color = "inverse" if excess_pct > 20 else "normal"
+                        else:
+                            delta_color = "normal"
+                        
+                        st.metric(key, value)
             
-            # Detailed export options
-            st.subheader("📁 Export Options")
+            # Detailed breakdowns
+            st.subheader("📈 Detailed Breakdowns")
             
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                if st.button("📊 Export Summary Report", use_container_width=True):
-                    summary_data = {
-                        'Metric': [
-                            'Total Items',
-                            'Critical Items (< 3 days)',
-                            'Warning Items (3-7 days)',
-                            'Normal Items (> 7 days)',
-                            'Excess Inventory',
-                            'Short Inventory',
-                            'Within Norms',
-                            'Average Coverage Days',
-                            'Total Stock Value'
-                        ],
-                        'Value': [
-                            len(filtered_df),
-                            len(filtered_df[filtered_df['Coverage Days'] < 3]),
-                            len(filtered_df[(filtered_df['Coverage Days'] >= 3) & 
-                                          (filtered_df['Coverage Days'] < 7)]),
-                            len(filtered_df[filtered_df['Coverage Days'] >= 7]),
-                            len(filtered_df[filtered_df['Status'] == 'Excess Inventory']),
-                            len(filtered_df[filtered_df['Status'] == 'Short Inventory']),
-                            len(filtered_df[filtered_df['Status'] == 'Within Norms']),
-                            f"{filtered_df['Coverage Days'].mean():.1f}",
-                            f"{filtered_df['Current Stock'].sum():,.0f}"
-                        ]
-                    }
-                    
-                    summary_df = pd.DataFrame(summary_data)
-                    csv = summary_df.to_csv(index=False)
-                    st.download_button(
-                        label="Download Summary CSV",
-                        data=csv,
-                        file_name=f"inventory_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        mime="text/csv"
-                    )
+                st.write("**By Classification:**")
+                if not filtered_df.empty:
+                    class_breakdown = filtered_df['Classification'].value_counts()
+                    for class_name, count in class_breakdown.items():
+                        pct = (count / len(filtered_df)) * 100
+                        st.write(f"• Class {class_name}: {count} ({pct:.1f}%)")
             
             with col2:
-                if st.button("🚨 Export Critical Items", use_container_width=True):
-                    critical_export = filtered_df[filtered_df['Coverage Days'] < 7]
-                    if not critical_export.empty:
-                        csv = critical_export.to_csv(index=False)
-                        st.download_button(
-                            label="Download Critical Items CSV",
-                            data=csv,
-                            file_name=f"critical_items_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                            mime="text/csv"
-                        )
-                    else:
-                        st.info("No critical items to export")
+                st.write("**By Coverage Category:**")
+                if not filtered_df.empty:
+                    coverage_breakdown = filtered_df['Coverage Category'].value_counts()
+                    for category, count in coverage_breakdown.items():
+                        pct = (count / len(filtered_df)) * 100
+                        st.write(f"• {category}: {count} ({pct:.1f}%)")
             
             with col3:
-                if st.button("📋 Export Full Report", use_container_width=True):
-                    excel_data = inv_system.export_to_excel(filtered_df)
-                    st.download_button(
-                        label="Download Full Excel Report",
-                        data=excel_data,
-                        file_name=f"full_inventory_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+                st.write("**By Status:**")
+                if not filtered_df.empty:
+                    status_breakdown = filtered_df['Status'].value_counts()
+                    for status, count in status_breakdown.items():
+                        pct = (count / len(filtered_df)) * 100
+                        st.write(f"• {status}: {count} ({pct:.1f}%)")
+            
+            # Action Items
+            st.subheader("🎯 Action Items")
+            
+            if not filtered_df.empty:
+                # Generate action items based on analysis
+                action_items = []
+                
+                critical_items = len(filtered_df[filtered_df['Coverage Days'] < 3])
+                if critical_items > 0:
+                    action_items.append(f"🚨 Urgent: Order stock for {critical_items} critical items")
+                
+                excess_items = len(filtered_df[filtered_df['Status'] == 'Excess Inventory'])
+                if excess_items > 0:
+                    action_items.append(f"📉 Review: {excess_items} items have excess inventory")
+                
+                short_items = len(filtered_df[filtered_df['Status'] == 'Short Inventory'])
+                if short_items > 0:
+                    action_items.append(f"📈 Reorder: {short_items} items need stock replenishment")
+                
+                high_consumption = filtered_df[filtered_df['Avg Consumption'] > filtered_df['Avg Consumption'].quantile(0.8)]
+                if not high_consumption.empty:
+                    action_items.append(f"👀 Monitor: {len(high_consumption)} high-consumption items need close monitoring")
+                
+                if action_items:
+                    for i, item in enumerate(action_items, 1):
+                        st.write(f"{i}. {item}")
+                else:
+                    st.success("✅ No immediate action items - inventory levels are healthy!")
     
     else:
-        st.info("No inventory data available. Please import data using the sidebar.")
+        st.info("No inventory data available. Upload a file or use the sample data to get started.")
     
-    # Add new part form (modal-like behavior)
+    # Add new part form (modal-like)
     if st.session_state.get('show_add_form', False):
-        st.subheader("➕ Add New Inventory Item")
-        
-        with st.form("add_new_part"):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                part_no = st.text_input("Part Number*", key="new_part_no")
-                description = st.text_input("Description*", key="new_description")
-                classification = st.selectbox("Classification*", ["A", "B", "C"], key="new_classification")
-                inventory_class = st.text_input("Inventory Class", key="new_inv_class")
-            
-            with col2:
-                avg_consumption = st.number_input("Average Consumption/Day*", min_value=0.0, key="new_consumption")
-                rm_norms_days = st.number_input("RM Norms (Days)*", min_value=0.0, key="new_norms_days")
-                rm_norms_qty = st.number_input("RM Norms (Qty)*", min_value=0.0, key="new_norms_qty")
-                current_stock = st.number_input("Current Stock*", min_value=0.0, key="new_stock")
-            
-            col1, col2, col3 = st.columns([1, 1, 1])
-            
-            with col1:
-                submitted = st.form_submit_button("Add Item", use_container_width=True)
-            
-            with col2:
-                if st.form_submit_button("Cancel", use_container_width=True):
-                    st.session_state.show_add_form = False
-                    st.rerun()
-            
-            if submitted:
-                if part_no and description and avg_consumption >= 0 and rm_norms_days >= 0 and rm_norms_qty >= 0:
-                    # Check if part number already exists
-                    existing_parts = [item['Part No'] for item in st.session_state.inventory_data]
-                    if part_no in existing_parts:
-                        st.error("Part number already exists!")
-                    else:
-                        # Add new item
-                        new_item_data = [{
-                            'Part No': part_no,
-                            'Part Description': description,
-                            'Part Classification': classification,
-                            'Inventory Class': inventory_class,
-                            'Average Consumption/Day': avg_consumption,
-                            'RM Norms - In Days': rm_norms_days,
-                            'RM Norms - In Qty': rm_norms_qty,
-                            'Current Stock Qty': current_stock
-                        }]
-                        
-                        # Process the new item
-                        inv_system.process_imported_data(st.session_state.inventory_data + new_item_data)
-                        
-                        st.success(f"Successfully added {part_no}!")
+        with st.expander("➕ Add New Part", expanded=True):
+            with st.form("add_part_form"):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    new_part_no = st.text_input("Part Number*")
+                    new_description = st.text_input("Description*")
+                    new_classification = st.selectbox("Classification*", ["A", "B", "C"])
+                    new_inv_class = st.text_input("Inventory Class")
+                
+                with col2:
+                    new_avg_consumption = st.number_input("Average Consumption/Day*", min_value=0.0, step=0.1)
+                    new_rm_norms_days = st.number_input("RM Norms (Days)*", min_value=0.0, step=1.0)
+                    new_rm_norms_qty = st.number_input("RM Norms (Qty)*", min_value=0.0, step=1.0)
+                    new_current_stock = st.number_input("Current Stock*", min_value=0.0, step=1.0)
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    submitted = st.form_submit_button("Add Part", use_container_width=True)
+                with col2:
+                    if st.form_submit_button("Cancel", use_container_width=True):
                         st.session_state.show_add_form = False
                         st.rerun()
-                else:
-                    st.error("Please fill in all required fields (marked with *)")
+                
+                if submitted:
+                    if all([new_part_no, new_description, new_avg_consumption, new_rm_norms_days, new_rm_norms_qty]):
+                        # Add new part to the data
+                        new_part_data = [{
+                            'Part No': new_part_no,
+                            'Part Description': new_description,
+                            'Part Classification': new_classification,
+                            'Inventory Class': new_inv_class,
+                            'Average Consumption/Day': new_avg_consumption,
+                            'RM Norms - In Days': new_rm_norms_days,
+                            'RM Norms - In Qty': new_rm_norms_qty,
+                            'Current Stock Qty': new_current_stock
+                        }]
+                        
+                        # Process and add the new data
+                        inv_system.process_imported_data(st.session_state.inventory_data + 
+                                                       [dict(zip(['Part No', 'Description', 'Classification', 'Inventory Class',
+                                                                'Avg Consumption', 'RM Norms Days', 'RM Norms Qty', 'Current Stock'],
+                                                               [item['Part No'], item['Description'], item['Classification'], 
+                                                                item['Inventory Class'], item['Avg Consumption'], item['RM Norms Days'],
+                                                                item['RM Norms Qty'], item['Current Stock']])) 
+                                                        for item in st.session_state.inventory_data] + 
+                                                       [{'Part No': new_part_no, 'Description': new_description, 
+                                                         'Classification': new_classification, 'Inventory Class': new_inv_class,
+                                                         'Avg Consumption': new_avg_consumption, 'RM Norms Days': new_rm_norms_days,
+                                                         'RM Norms Qty': new_rm_norms_qty, 'Current Stock': new_current_stock}])
+                        
+                        st.success(f"Part {new_part_no} added successfully!")
+                        st.session_state.show_add_form = False
+                        st.rerun()
+                    else:
+                        st.error("Please fill in all required fields (marked with *)")
 
     # Footer
     st.markdown("---")
-    st.markdown("""
-    <div style='text-align: center; color: #666; padding: 1rem;'>
-        <p>📦 Inventory Management System | Built with Streamlit | 
-        <small>Tolerance Zone: ±{tolerance}%</small></p>
-    </div>
-    """.format(tolerance=st.session_state.tolerance), unsafe_allow_html=True)
+    st.markdown(
+        "<div style='text-align: center; color: #666; margin-top: 2rem;'>"
+        "<p>Inventory Coverage Meter v2.0 | Built with ❤️ by Agilomatrix</p>"
+        "</div>",
+        unsafe_allow_html=True
+    )
 
 if __name__ == "__main__":
     main()
