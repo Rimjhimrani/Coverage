@@ -189,10 +189,10 @@ class InventoryManagementSystem:
                 description = self.get_column_value(row, ['Part Description', 'Description', 'Desc'])
                 classification = self.get_column_value(row, ['Part Classification', 'Classification', 'Class'])
                 inv_class = self.get_column_value(row, ['Inventory Class', 'Inv Class', 'InvClass'])
-                avg_consumption = float(self.get_column_value(row, ['Average Consumption/Day', 'Avg Consumption', 'Daily Consumption']) or 0)
-                rm_norms_days = float(self.get_column_value(row, ['RM Norms - In Days', 'RM Days', 'Norms Days']) or 0)
-                rm_norms_qty = float(self.get_column_value(row, ['RM Norms - In Qty', 'RM Qty', 'Norms Qty']) or 0)
-                current_stock = float(self.get_column_value(row, ['Current Stock Qty', 'Current Stock', 'Stock']) or 0)
+                avg_consumption = self.safe_int(self.get_column_value(row, ['Average Consumption/Day', 'Avg Consumption', 'Daily Consumption']) or 0)
+                rm_norms_days = self.safe_int(self.get_column_value(row, ['RM Norms - In Days', 'RM Days', 'Norms Days']) or 0)
+                rm_norms_qty = self.safe_int(self.get_column_value(row, ['RM Norms - In Qty', 'RM Qty', 'Norms Qty']) or 0)
+                current_stock = self.safe_int(self.get_column_value(row, ['Current Stock Qty', 'Current Stock', 'Stock']) or 0)
                 
                 # Calculate revised quantity based on tolerance
                 revised_qty = rm_norms_qty * (1 + st.session_state.tolerance / 100)
@@ -219,7 +219,7 @@ class InventoryManagementSystem:
                     'Revised Qty': round(revised_qty),  # Rounded to whole number
                     'Current Stock': round(current_stock),  # Rounded to whole number
                     'Variance %': round(variance_pct, 1),  # Rounded to 1 decimal place
-                    'Variance Qty': round(variance_qty),  # Rounded to whole number
+                    'Variance Qty': int(round(variance_qty)),  # Rounded to whole number
                     'Status': status,
                     'Coverage Days': round(coverage_days) if coverage_days != 999 else 999,  # Rounded to whole number
                     'Coverage Category': coverage_category
