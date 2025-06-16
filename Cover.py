@@ -747,7 +747,7 @@ def main():
                 # Create dashboard charts
                 charts = inv_system.create_coverage_dashboard(filtered_df)
                 if charts and all(chart is not None for chart in charts):
-                    fig_coverage, fig_status, fig_class, fighistogram = charts
+                    fig_coverage, fig_status, fig_class, fig_histogram = charts
                     
                     # Display charts in columns
                     col1, col2 = st.columns(2)
